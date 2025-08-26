@@ -195,12 +195,34 @@ for index, row in gff.iterrows():
         if snp in range(start,end):
             results.append([type, snp,start,end,ref,alt,row["ORF"], row["Annotation"]])
 results_df = pd.DataFrame.from_records(results, columns=["Type", "SNP_POS", "Start", "End","Ref", "Alt","ORF", "Annotation"])
+
+#-------------------------------------------------------------------------------
+
+#####################
+## Mutiple Contigs ##
+#####################
+
+#1 Transforming the VCF df into a list
+snps = vcf[["contig","type", "pos", "ref", "alt"]].values.tolist()
+
+#2 Iterating through the GFF df to add SNP information
+result_data = []
+
+for index, row in gff.iterrows():
+    start = row["start"]
+    end = row["end"]
+    for contig,type,snp,ref,alt in snps:
+        if contig == row["contig"] and snp in range(start,end):
+            result_data.append([contig,type, snp,start,end,ref,alt,row["ORF"], row["Annotation"]])
+results_df = pd.DataFrame.from_records(result_data, columns=["Contig","Type", "SNP_POS", "Start", "End","Ref", "Alt","ORF", "Annotation"])
 ```
 ## SNP/SNV analysis
 On this step we will compare each affected codon to the reference to check if there is any mutation associated to aminoacid substitution.  
 
 ```python
 from Bio import SeqIO
+
+snps_only = results_df[results_df["Type"] == "SNP"] 
 
 # Load sequences only once
 ref_seq = str(next(SeqIO.parse("reference.fasta", "fasta")).seq)
@@ -229,6 +251,50 @@ for index, row in snps_only.iterrows():
             break  # Codon found, exit the loop
 
 # Define mutation types
+def mutation(before, after):
+    if after == "*":
+        return "Nonsense"
+    elif before != after:
+        return "Missense"
+    else:
+        return "Silence"
+
+snps_only["Mutation"] = snps_only.apply(lambda x: mutation(x["original AA"], x["mutated AA"]), axis=1)
+
+#------------------------------------------------------------------------------------
+
+######################
+## Multiple Contigs ##
+######################
+
+#Filtering only SNP variations
+snps_only = results_df[results_df["Type"] == "SNP"]
+
+for index, row in snps_only.iterrows():
+    contig = row["Contig"]
+    snp = row["SNP_POS"]
+    start = row["Start"]
+    end = row["End"]
+    ref = row["Ref"]
+    alt = row["Alt"]
+    while start <= end: #Check the complete gene delimitation
+        partial_start = start #This step check each codon!
+        start+=3
+        partial_end = start
+        if snp in range(partial_start, partial_end):
+            for s in SeqIO.parse("/home/usuario/Projects/GenomasBeny/data/intermdiate/312210_A14.fasta", "fasta"):
+                if contig == s.id:
+                    # print(contig, s.id)
+                    codon = str(s.seq)[partial_start-1:partial_end-1]
+                    codon_index = snp - partial_start
+                    if 0 <= codon_index < 3:
+                        alt_codon = codon[:codon_index] + alt + codon[codon_index+1:]
+                        snps_only.loc[index, "original codon"] = codon
+                        snps_only.loc[index, "original AA"] = codontab.get(codon, "?")
+                        snps_only.loc[index, "mutated codon"] = alt_codon
+                        snps_only.loc[index, "mutated AA"] = codontab.get(alt_codon, "?")
+
+#Let's define mutation types
 def mutation(before, after):
     if after == "*":
         return "Nonsense"
