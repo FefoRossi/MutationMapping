@@ -282,7 +282,7 @@ for index, row in snps_only.iterrows():
         start+=3
         partial_end = start
         if snp in range(partial_start, partial_end):
-            for s in SeqIO.parse("/home/usuario/Projects/GenomasBeny/data/intermdiate/312210_A14.fasta", "fasta"):
+            for s in SeqIO.parse("ref_genome.fasta", "fasta"):
                 if contig == s.id:
                     # print(contig, s.id)
                     codon = str(s.seq)[partial_start-1:partial_end-1]
@@ -333,5 +333,8 @@ def find_frameshift(ref, alt):
         return f"INSERTION OF {number_of_codons} CODONS"
 
 insertions_deletions["FrameShift"] = insertions_deletions.apply(lambda x: find_frameshift(x["Ref"],x["Alt"]), axis=1)
+
+final_dataset = pd.concat([snps_only, insertions_deletions])
+final_dataset.to_csv("Mutation_data.csv", index=False)
 ```
 
